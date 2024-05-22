@@ -1,5 +1,5 @@
 import scrapy
-from scrapy.exceptions import CloseSpider
+from urllib.parse import urlparse, parse_qs
 
 
 class OgsSpider(scrapy.Spider):
@@ -20,18 +20,31 @@ class OgsSpider(scrapy.Spider):
             details = row.css('td:nth-child(3)')
             agenda = (details.css('a[href^="/Public/Agenda"]::attr(href)').get() or '').strip() or None
             minutes = (details.css('a[href^="/Public/Minutes"]::attr(href)').get() or '').strip() or None
-            streaming = (location.css('a:contains("Streaming Meeting")::attr(href)').get() or '').strip() or None
-            recorded = (location.css('a:contains("Recorded Meeting")::attr(href)').get() or '').strip() or None
-
+            # this is the same as recorded anyway
+            # streaming = (location.css('a:contains("Streaming Meeting")::attr(href)').get() or '').strip() or None
+            video = (location.css('a:contains("Recorded Meeting")::attr(href)').get() or '').strip() or None
+            meeting_number = None
             if agenda is not None:
+                # Parse the URL
+                parsed_url = urlparse(agenda)
+                # Extract the query string parameters
+                params = parse_qs(parsed_url.query)
+                # Get the 'meeting' parameter value as a number
+                meeting_number = int(params['meeting'][0])
                 agenda = self.root_url + agenda
             if minutes is not None:
                 minutes = self.root_url + minutes
 
-            meta = {'meeting': meeting, 'agenda': agenda, 'streaming': streaming, 'recorded': recorded, 'minutes': minutes}
+            meta = {
+                'meeting': meeting,
+                'agenda': agenda,
+                'video': video,
+                'minutes': minutes,
+                'meeting_number': meeting_number
+            }
 
             if minutes is not None:
-                yield scrapy.Request(minutes, callback=self.parse_minutes, meta=meta)
+                yield scrapy.Request(minutes, callback=self.parse_minutes, meta={'data': meta})
             else:
                 yield meta
 
@@ -39,13 +52,7 @@ class OgsSpider(scrapy.Spider):
     def parse_minutes(self, response):
         document_id = response.css('input#NewDocumentViewerDocumentID::attr(value)').get()
         url = f"{self.document_base}{document_id}?org={self.org}"
-        response.meta['minutes_link'] = url
-        meta = {
-            'meeting': response.meta['meeting'],
-            'agenda': response.meta['agenda'],
-            'streaming': response.meta['streaming'],
-            'recorded': response.meta['recorded'],
-            'minutes': response.meta['minutes'],
-            'minutes_link': url
-        }
+        meta = response.meta['data']
+        meta['minutes_link'] = url
+        meta['minutes_id'] = document_id
         yield meta
