@@ -1,9 +1,10 @@
+import os
 import scrapy
 from urllib.parse import urlparse, parse_qs
 
 
 class OgsSpider(scrapy.Spider):
-    name = 'ogs'
+    name = 'scraper'
     root_url = 'https://meetings.boardbook.org'
     org = 1240
     document_base = "https://meetings.boardbook.org/Documents/DownloadPDF/"
@@ -56,3 +57,13 @@ class OgsSpider(scrapy.Spider):
         meta['minutes_link'] = url
         meta['minutes_id'] = document_id
         yield meta
+        yield scrapy.Request(url, callback=self.download_pdf, meta={'document_id': document_id})
+
+    def download_pdf(self, response):
+        document_id = response.meta['document_id']
+        # Ensure the 'minutes' directory exists
+        if not os.path.exists('output/minutes'):
+            os.makedirs('output/minutes')
+        # Save the file in the 'minutes' directory
+        with open(f'minutes/{document_id}.pdf', 'wb') as f:
+            f.write(response.body)
